@@ -14,7 +14,7 @@ self.window = self;
 const workerUrl = self.location ? self.location.href : '';
 const versionMatch = workerUrl.match(/[?&]v=(\d+)/);
 const version = versionMatch ? versionMatch[1] : Date.now();
-importScripts(`dist/webdvcs-browser.js?v=${version}`);
+importScripts(`webdvcs-browser.js?v=${version}`);
 
 // Repository instance maintained in worker
 let currentRepo = null;
