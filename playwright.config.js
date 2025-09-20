@@ -44,7 +44,7 @@ module.exports = defineConfig({
 
   /* Run your local dev server before starting the tests */
   webServer: {
-    command: 'npm run build:github && cd dist && python3 -m http.server 8080',
+    command: 'npm run build && cd dist && python3 -m http.server 8080',
     port: 8080,
     reuseExistingServer: !process.env.CI,
   },
