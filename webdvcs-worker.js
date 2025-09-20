@@ -3,8 +3,8 @@
  * Prevents UI blocking when processing large files
  */
 
-// Import sql.js for SQLite operations (local copy to avoid CORS issues)
-importScripts('sql.js/sql-wasm.js');
+// Import sql.js for SQLite operations from CDN
+importScripts('https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.13.0/sql-wasm.js');
 
 // Create a fake window object for the browser bundle
 self.window = self;
@@ -29,7 +29,7 @@ const WebDVCS = self.WebDVCS || window.WebDVCS;
 async function initSQL() {
     if (!SQL) {
         SQL = await initSqlJs({
-            locateFile: file => `sql.js/${file}`
+            locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.13.0/${file}`
         });
 
         // Make SQL.js available for BrowserDatabase (which expects window.SQL)

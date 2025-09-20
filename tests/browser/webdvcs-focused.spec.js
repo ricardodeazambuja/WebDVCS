@@ -17,7 +17,7 @@ test.describe('WebDVCS Browser Interface', () => {
       }
     });
 
-    await page.goto('http://localhost:8080/webdvcs-browser.html');
+    await page.goto('http://localhost:8080/');
     await page.waitForSelector('#createRepoButton', { timeout: 15000 });
     await page.waitForFunction(() => {
       const status = document.querySelector('#repoStatus');
