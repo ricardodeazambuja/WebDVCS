@@ -1,0 +1,130 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release'
+        required: true
+        default: 'v1.0.0'
+
+jobs:
+  release-build:
+    name: 🏷️ Release Build
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📦 Checkout Code
+      uses: actions/checkout@v5
+      
+    - name: 🟢 Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        
+    - name: 📥 Install Dependencies
+      run: npm ci
+      
+    - name: 🧪 Run Full Test Suite
+      run: |
+        npx playwright install chromium --with-deps
+        npm test
+        npm run test:browser
+      
+    - name: 🏗️ Build Web for Production
+      run: npm run build:github
+
+    - name: 🔧 Build CLI Executables
+      run: |
+        mkdir -p dist/cli
+        npm run build:cli
+
+    - name: 📊 Bundle Analysis
+      run: |
+        echo "## 📊 Bundle Analysis" >> $GITHUB_STEP_SUMMARY
+        echo "### Web Bundle:" >> $GITHUB_STEP_SUMMARY
+        echo "```" >> $GITHUB_STEP_SUMMARY
+        ls -la dist/*.js dist/*.css dist/*.html 2>/dev/null || echo "No web assets found" >> $GITHUB_STEP_SUMMARY
+        echo "```" >> $GITHUB_STEP_SUMMARY
+
+        echo "### CLI Executables:" >> $GITHUB_STEP_SUMMARY
+        echo "```" >> $GITHUB_STEP_SUMMARY
+        ls -la dist/cli/ 2>/dev/null || echo "No CLI executables found" >> $GITHUB_STEP_SUMMARY
+        echo "```" >> $GITHUB_STEP_SUMMARY
+
+        echo "### Total Sizes:" >> $GITHUB_STEP_SUMMARY
+        echo "Web: $(du -sh dist/*.{js,css,html} 2>/dev/null | cut -f1 | paste -sd+ | bc 2>/dev/null || echo 'Unknown')" >> $GITHUB_STEP_SUMMARY
+        echo "CLI: $(du -sh dist/cli/ 2>/dev/null | cut -f1 || echo 'Unknown')" >> $GITHUB_STEP_SUMMARY
+
+    - name: 🎁 Create Release Archives
+      run: |
+        VERSION=${{ github.event.inputs.version || github.ref_name }}
+
+        # Create web bundle archive
+        cd dist
+        zip -r ../webdvcs-web-${VERSION}.zip index.html styles.css webdvcs-browser.js
+        cd ..
+
+        # Create CLI archives for each platform
+        if [ -f dist/cli/webdvcs-win.exe ]; then
+          zip webdvcs-cli-windows-${VERSION}.zip dist/cli/webdvcs-win.exe
+        fi
+
+        if [ -f dist/cli/webdvcs-macos ]; then
+          tar -czf webdvcs-cli-macos-${VERSION}.tar.gz -C dist/cli webdvcs-macos
+        fi
+
+        if [ -f dist/cli/webdvcs-linux ]; then
+          tar -czf webdvcs-cli-linux-${VERSION}.tar.gz -C dist/cli webdvcs-linux
+        fi
+
+        # Create combined archive
+        tar -czf webdvcs-complete-${VERSION}.tar.gz dist/
+      
+    - name: 📤 Upload Release Assets
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-builds
+        path: |
+          webdvcs-web-*.zip
+          webdvcs-cli-*.zip
+          webdvcs-cli-*.tar.gz
+          webdvcs-complete-*.tar.gz
+        retention-days: 90
+        
+    - name: 🚀 Attach Release Assets
+      if: github.event_name == 'release'
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          webdvcs-web-*.zip
+          webdvcs-cli-*.zip
+          webdvcs-cli-*.tar.gz
+          webdvcs-complete-*.tar.gz
+        body: |
+          ## 🎉 WebDVCS Release ${{ github.ref_name }}
+
+          ### 📦 Downloads
+
+          **Web Interface:**
+          - `webdvcs-web-*.zip` - Browser-based interface (GitHub Pages compatible)
+
+          **CLI Executables:**
+          - `webdvcs-cli-windows-*.zip` - Windows executable (no Node.js required)
+          - `webdvcs-cli-macos-*.tar.gz` - macOS executable (no Node.js required)
+          - `webdvcs-cli-linux-*.tar.gz` - Linux executable (no Node.js required)
+
+          **Complete Package:**
+          - `webdvcs-complete-*.tar.gz` - All builds in one archive
+
+          ### 🚀 Usage
+
+          **CLI:** Extract and run the executable for your platform
+          **Web:** Upload the web bundle to any static hosting or use GitHub Pages
+
+          See [README.md](README.md) for detailed usage instructions.
+        draft: false
+        prerelease: false

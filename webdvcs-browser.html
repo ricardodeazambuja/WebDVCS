@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebDVCS - Browser Version Control System</title>
+    <link rel="stylesheet" href="styles.css?v=9">
+</head>
+<body>
+    <header class="header">
+        <h1>🚀 WebDVCS</h1>
+        <p>Distributed Version Control System for the Browser</p>
+    </header>
+
+    <main class="container">
+        <!-- Repository Management Section -->
+        <div class="card mb-2">
+            <div class="card-header">
+                <h2>Repository Management</h2>
+            </div>
+            <div class="card-body">
+                <div id="repoStatus" class="status info">
+                    <span id="statusIcon">⏳</span> Loading SQL.js...
+                </div>
+                
+                <div class="grid">
+                    <div>
+                        <h3>Create or Load Repository</h3>
+                        <div class="mb-1">
+                            <label for="repoName">Repository Name:</label>
+                            <input type="text" id="repoName" placeholder="my-project" />
+                        </div>
+                        <div class="mb-1">
+                            <button id="createRepoButton" class="btn btn-primary">
+                                ✨ Create New Repository
+                            </button>
+                        </div>
+                        <div class="mb-1">
+                            <label for="uploadRepo">Upload Existing Repository:</label>
+                            <input type="file" id="uploadRepo" accept=".sqlite,.db">
+                        </div>
+                        <div>
+                            <button id="downloadRepoButton" class="btn btn-success" disabled>
+                                💾 Download Repository
+                            </button>
+                        </div>
+                        
+                        <div class="mt-2">
+                            <h4>Author Configuration</h4>
+                            <div class="mb-1">
+                                <label for="authorName">Author Name:</label>
+                                <input type="text" id="authorName" placeholder="Your Name" />
+                            </div>
+                            <div class="mb-1">
+                                <label for="authorEmail">Author Email:</label>
+                                <input type="email" id="authorEmail" placeholder="you@example.com" />
+                            </div>
+                            <button id="saveAuthorButton" class="btn btn-secondary">
+                                💾 Save Author Info
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div id="repoInfo" class="d-none">
+                        <h3>Repository Statistics</h3>
+                        <div class="repo-info">
+                            <div class="repo-stat">
+                                <div class="repo-stat-value" id="commitCount">0</div>
+                                <div class="repo-stat-label">Commits</div>
+                            </div>
+                            <div class="repo-stat">
+                                <div class="repo-stat-value" id="fileCount">0</div>
+                                <div class="repo-stat-label">Files</div>
+                            </div>
+                            <div class="repo-stat">
+                                <div class="repo-stat-value" id="branchCount">1</div>
+                                <div class="repo-stat-label">Branches</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Repository Status Section -->
+        <div class="card mb-2" id="statusSection" style="display: none;">
+            <div class="card-header">
+                <h2>📊 Repository Status</h2>
+                <button id="refreshStatusButton" class="btn btn-outline">🔄 Refresh Status</button>
+            </div>
+            <div class="card-body">
+                <div class="status-overview" id="statusOverview">
+                    <div class="status-item">
+                        <span class="status-label">Current Branch:</span>
+                        <span class="status-value" id="currentBranchStatus">main</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Repository State:</span>
+                        <span class="status-value" id="repoStateStatus">Clean working directory</span>
+                    </div>
+                    <div class="status-item" id="checkoutStatusItem" style="display: none;">
+                        <span class="status-label">Checked Out:</span>
+                        <span class="status-value" id="checkoutStatus">HEAD</span>
+                    </div>
+                </div>
+
+                <!-- Time Travel Controls -->
+                <div class="time-travel-controls" id="timeTravelControls" style="display: none;">
+                    <div class="time-travel-warning">
+                        <span class="warning-icon">⚠️</span>
+                        <span class="warning-text">You are in time travel mode. Changes won't be saved to your branch.</span>
+                        <button id="returnToHeadButton" class="btn btn-sm btn-primary">🔙 Return to Latest</button>
+                    </div>
+                </div>
+
+                <div class="status-sections">
+                    <!-- Staged Files -->
+                    <div class="status-section" id="stagedFilesSection">
+                        <h4 class="status-section-title">
+                            📦 Staged Files
+                            <span class="status-count" id="stagedFilesCount">(0)</span>
+                        </h4>
+                        <div class="status-file-list" id="stagedFilesList">
+                            <div class="empty-state">No files staged for commit</div>
+                        </div>
+                    </div>
+
+                    <!-- Current HEAD Files -->
+                    <div class="status-section" id="headFilesSection">
+                        <h4 class="status-section-title">
+                            📄 Current Commit Files
+                            <span class="status-count" id="headFilesCount">(0)</span>
+                        </h4>
+                        <div class="status-file-list" id="headFilesList">
+                            <div class="empty-state">No commits yet - create your first commit to see files</div>
+                        </div>
+                    </div>
+
+                    <!-- Repository Summary -->
+                    <div class="status-section" id="repoSummarySection">
+                        <h4 class="status-section-title">
+                            📊 Repository Summary
+                        </h4>
+                        <div class="repo-summary-content" id="repoSummaryContent">
+                            <div class="summary-item">
+                                <span class="summary-label">Total Commits:</span>
+                                <span class="summary-value" id="totalCommitsCount">0</span>
+                            </div>
+                            <div class="summary-item">
+                                <span class="summary-label">Last Commit:</span>
+                                <span class="summary-value" id="lastCommitInfo">None</span>
+                            </div>
+                            <div class="summary-item">
+                                <span class="summary-label">Repository Size:</span>
+                                <span class="summary-value" id="repoSizeInfo">0 B</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- File Management Section -->
+        <div class="card">
+            <div class="card-header">
+                    <h2>📁 File Explorer</h2>
+                </div>
+                <div class="card-body">
+                    <div class="file-explorer">
+                        <!-- File Explorer Tabs -->
+                        <div class="explorer-tabs">
+                            <button id="stagedTab" class="explorer-tab active" data-tab="staged">📦 Staging Area (0)</button>
+                            <button id="committedTab" class="explorer-tab" data-tab="committed">🗂️ Repository Files</button>
+                        </div>
+                        
+                        <!-- Staged Files View -->
+                        <div id="stagedView" class="explorer-view active">
+                            <!-- File Upload Area -->
+                            <div class="file-drop-zone" id="fileDropZone">
+                                <div class="drop-zone-content">
+                                    <div class="drop-zone-icon">📁</div>
+                                    <div class="drop-zone-text">
+                                        <p><strong>Drag and drop files or folders here</strong></p>
+                                        <p>or</p>
+                                        <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                                            <label for="uploadFile" class="file-input-label">📄 Choose Files</label>
+                                            <label for="uploadDirectory" class="file-input-label">📁 Choose Directory</label>
+                                        </div>
+                                        <input type="file" id="uploadFile" multiple style="display: none;">
+                                        <input type="file" id="uploadDirectory" webkitdirectory style="display: none;">
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="upload-progress" id="uploadProgress" style="display: none;">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="progressFill"></div>
+                                </div>
+                                <div class="progress-text" id="progressText">Uploading...</div>
+                            </div>
+
+                            <div class="view-header">
+                                <h4>Staged Files</h4>
+                                <div class="file-actions">
+                                    <button id="unstageAllButton" class="btn btn-outline">📤 Unstage All</button>
+                                    <button id="deleteAllStagedButton" class="btn btn-outline btn-danger">🗑️ Delete All</button>
+                                    <button id="refreshStaged" class="btn btn-outline">🔄 Refresh</button>
+                                    <button id="clearStaged" class="btn btn-outline">🗑️ Clear All</button>
+                                </div>
+                            </div>
+                            <div class="file-search">
+                                <input type="text" id="stagedSearch" placeholder="Search staged files..." />
+                                <span class="search-icon">🔍</span>
+                            </div>
+                            <div class="file-tree" id="stagedTree">
+                                <div class="empty-state">No staged files - upload files above to get started</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Committed Files View -->
+                        <div id="committedView" class="explorer-view">
+                            <div class="view-header">
+                                <h4>Repository Files</h4>
+                                <div class="file-actions">
+                                    <select id="commitSelect">
+                                        <option value="">Select commit to browse</option>
+                                    </select>
+                                    <button id="refreshCommitted" class="btn btn-outline">🔄 Refresh</button>
+                                </div>
+                            </div>
+                            <div class="file-search">
+                                <input type="text" id="committedSearch" placeholder="Search repository files..." />
+                                <span class="search-icon">🔍</span>
+                            </div>
+                            <div class="file-tree" id="committedTree">
+                                <div class="empty-state">Select a commit to view files</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+        </div>
+
+        <!-- Commit Management -->
+        <div class="card">
+            <div class="card-header">
+                    <h2>📝 Commits</h2>
+                </div>
+                <div class="card-body">
+                    <div class="mb-2">
+                        <label for="commitMessage">Commit Message:</label>
+                        <textarea id="commitMessage" placeholder="Enter your commit message..." rows="3"></textarea>
+                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                            <button id="commitButton" class="btn btn-success">✅ Create Commit</button>
+                            <button id="openDiffViewerButton" class="btn btn-outline">🔄 Compare Commits</button>
+                        </div>
+                    </div>
+                    
+                    <div id="commitLog" class="commit-log">
+                        <div class="commit-log-header">
+                            <h3>Commit History</h3>
+                            <div class="commit-log-controls">
+                                <select id="commitPageSize" class="btn btn-outline">
+                                    <option value="10">10 per page</option>
+                                    <option value="25">25 per page</option>
+                                    <option value="50">50 per page</option>
+                                </select>
+                                <button id="refreshCommitsButton" class="btn btn-outline">🔄 Refresh</button>
+                            </div>
+                        </div>
+
+                        <div id="commitHistory" class="commit-history">
+                            <div class="text-center text-muted">No commits yet</div>
+                        </div>
+
+                        <div id="commitPagination" class="commit-pagination" style="display: none;">
+                            <button id="loadMoreCommitsButton" class="btn btn-outline">📜 Load More Commits</button>
+                            <div class="commit-page-info">
+                                <span id="commitPageInfo">Showing 0 commits</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        <!-- Repository Analytics Section -->
+        <div class="card mb-2" id="analyticsSection" style="display: none;">
+            <div class="card-header">
+                <h2>📊 Repository Analytics</h2>
+                <button id="refreshAnalyticsButton" class="btn btn-outline">🔄 Refresh Analytics</button>
+            </div>
+            <div class="card-body">
+                <div class="analytics-overview">
+                    <div class="analytics-grid">
+                        <div class="analytics-card">
+                            <div class="analytics-icon">💾</div>
+                            <div class="analytics-info">
+                                <div class="analytics-value" id="totalStorageSize">-</div>
+                                <div class="analytics-label">Total Storage</div>
+                            </div>
+                        </div>
+                        <div class="analytics-card">
+                            <div class="analytics-icon">📦</div>
+                            <div class="analytics-info">
+                                <div class="analytics-value" id="totalObjects">-</div>
+                                <div class="analytics-label">Total Objects</div>
+                            </div>
+                        </div>
+                        <div class="analytics-card">
+                            <div class="analytics-icon">🗜️</div>
+                            <div class="analytics-info">
+                                <div class="analytics-value" id="compressionRatio">-</div>
+                                <div class="analytics-label">Compression</div>
+                            </div>
+                        </div>
+                        <div class="analytics-card">
+                            <div class="analytics-icon">⚡</div>
+                            <div class="analytics-info">
+                                <div class="analytics-value" id="efficiency">-</div>
+                                <div class="analytics-label">Efficiency</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="analytics-details">
+                    <div class="analytics-section">
+                        <h4>📈 Object Breakdown</h4>
+                        <div class="object-breakdown" id="objectBreakdown">
+                            <div class="object-type">
+                                <span class="object-type-label">Commits:</span>
+                                <span class="object-type-value" id="commitObjects">-</span>
+                            </div>
+                            <div class="object-type">
+                                <span class="object-type-label">Trees:</span>
+                                <span class="object-type-value" id="treeObjects">-</span>
+                            </div>
+                            <div class="object-type">
+                                <span class="object-type-label">Blobs:</span>
+                                <span class="object-type-value" id="blobObjects">-</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="analytics-section">
+                        <h4>📂 File Type Analysis</h4>
+                        <div class="file-type-analysis" id="fileTypeAnalysis">
+                            <div class="loading-state">Analyzing file types...</div>
+                        </div>
+                    </div>
+
+                    <div class="analytics-section">
+                        <h4>📊 Storage Efficiency</h4>
+                        <div class="efficiency-metrics" id="efficiencyMetrics">
+                            <div class="efficiency-metric">
+                                <span class="metric-label">Deduplication Savings:</span>
+                                <span class="metric-value" id="deduplicationSavings">-</span>
+                            </div>
+                            <div class="efficiency-metric">
+                                <span class="metric-label">Average File Size:</span>
+                                <span class="metric-value" id="averageFileSize">-</span>
+                            </div>
+                            <div class="efficiency-metric">
+                                <span class="metric-label">Largest Object:</span>
+                                <span class="metric-value" id="largestObject">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Branch Management -->
+        <div class="card">
+            <div class="card-header">
+                    <h2>🌿 Branches</h2>
+                </div>
+                <div class="card-body">
+                    <div class="mb-2">
+                        <label for="branchName">New Branch Name:</label>
+                        <input type="text" id="branchName" placeholder="feature/new-feature">
+                        <button id="createBranchButton" class="btn btn-primary">🌱 Create Branch</button>
+                    </div>
+                    
+                    <div class="mb-2">
+                        <label for="branchSelect">Switch Branch:</label>
+                        <select id="branchSelect">
+                            <option value="">Select branch to switch</option>
+                        </select>
+                        <button id="switchBranchButton" class="btn btn-secondary">🔄 Switch Branch</button>
+                    </div>
+                    
+                    <div id="branchList" class="branch-list">
+                        <h3>All Branches</h3>
+                        <div id="currentBranch" class="text-muted">No repository loaded</div>
+                        <div id="branchItems" class="text-center text-muted">
+                            Create or load a repository to see branches
+                        </div>
+                    </div>
+
+                    <!-- Branch Merge Section -->
+                    <div class="mt-2">
+                        <h3>🔀 Merge Operations</h3>
+                        <div class="merge-controls">
+                            <div class="merge-setup">
+                                <div class="mb-1">
+                                    <label for="mergeSourceBranch">Merge from Branch:</label>
+                                    <select id="mergeSourceBranch">
+                                        <option value="">Select branch to merge...</option>
+                                    </select>
+                                </div>
+                                <div class="mb-1">
+                                    <label for="mergeTargetBranch">Into Current Branch:</label>
+                                    <input type="text" id="mergeTargetBranch" readonly placeholder="Current branch">
+                                </div>
+                                <div class="merge-actions">
+                                    <button id="previewMergeButton" class="btn btn-outline">👁️ Preview Merge</button>
+                                    <button id="executeMergeButton" class="btn btn-primary">🔀 Execute Merge</button>
+                                </div>
+                            </div>
+
+                            <div class="merge-status" id="mergeStatus" style="display: none;">
+                                <div class="merge-info" id="mergeInfo">
+                                    <h4>Merge Preview</h4>
+                                    <div class="merge-summary" id="mergeSummary"></div>
+                                </div>
+                                <div class="merge-conflicts" id="mergeConflicts" style="display: none;">
+                                    <h4>⚠️ Merge Conflicts Detected</h4>
+                                    <div class="conflict-list" id="conflictList"></div>
+                                    <div class="conflict-actions">
+                                        <button id="resolveConflictsButton" class="btn btn-warning">🛠️ Resolve Conflicts</button>
+                                        <button id="abortMergeButton" class="btn btn-outline">❌ Abort Merge</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Branch Export/Import Section -->
+                    <div class="mt-2">
+                        <h3>📤 Branch Export/Import</h3>
+                        <div class="mb-2">
+                            <label for="exportBranchSelect">Export Branch:</label>
+                            <select id="exportBranchSelect">
+                                <option value="">Select branch to export</option>
+                            </select>
+                            <button id="exportBranchButton" class="btn btn-success">📤 Export Branch</button>
+                        </div>
+
+                        <div class="mb-2">
+                            <label for="importBranchFile">Import Branch:</label>
+                            <input type="file" id="importBranchFile" accept=".webdvcs-branch,.json">
+                            <button id="importBranchButton" class="btn btn-primary">📥 Import Branch</button>
+                        </div>
+                    </div>
+                </div>
+        </div>
+
+        <!-- File Content Viewer Modal -->
+        <div id="fileViewerModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 class="modal-title" id="fileViewerTitle">📄 File Viewer</h3>
+                    <button class="modal-close" id="fileViewerClose">×</button>
+                </div>
+                <div class="modal-body">
+                    <div class="file-info" id="fileViewerInfo">
+                        <span class="file-info-item">
+                            <span class="file-info-label">Size:</span>
+                            <span class="file-info-value" id="fileViewerSize">-</span>
+                        </span>
+                        <span class="file-info-item">
+                            <span class="file-info-label">Type:</span>
+                            <span class="file-info-value" id="fileViewerType">-</span>
+                        </span>
+                        <span class="file-info-item">
+                            <span class="file-info-label">Hash:</span>
+                            <span class="file-info-value" id="fileViewerHash">-</span>
+                        </span>
+                    </div>
+                    <pre class="file-content" id="fileViewerContent">Loading...</pre>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline" id="fileViewerClose2">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Diff Viewer Modal -->
+        <div id="diffViewerModal" class="modal">
+            <div class="modal-content modal-large">
+                <div class="modal-header">
+                    <h3 class="modal-title" id="diffViewerTitle">🔄 Diff Viewer</h3>
+                    <button class="modal-close" id="diffViewerClose">×</button>
+                </div>
+                <div class="modal-body">
+                    <div class="diff-controls">
+                        <div class="diff-control-group">
+                            <label for="diffFromCommit">Compare from:</label>
+                            <select id="diffFromCommit">
+                                <option value="">Select commit...</option>
+                            </select>
+                        </div>
+                        <div class="diff-control-group">
+                            <label for="diffToCommit">Compare to:</label>
+                            <select id="diffToCommit">
+                                <option value="">Select commit...</option>
+                            </select>
+                        </div>
+                        <div class="diff-control-group">
+                            <button id="generateDiffButton" class="btn btn-primary">🔄 Generate Diff</button>
+                            <button id="swapCommitsButton" class="btn btn-outline">⇄ Swap</button>
+                        </div>
+                    </div>
+
+                    <div class="diff-summary" id="diffSummary" style="display: none;">
+                        <div class="diff-stats">
+                            <span class="diff-stat">
+                                <span class="diff-stat-value" id="diffFileCount">0</span>
+                                <span class="diff-stat-label">files changed</span>
+                            </span>
+                            <span class="diff-stat added">
+                                <span class="diff-stat-value" id="diffAdditions">0</span>
+                                <span class="diff-stat-label">additions</span>
+                            </span>
+                            <span class="diff-stat removed">
+                                <span class="diff-stat-value" id="diffDeletions">0</span>
+                                <span class="diff-stat-label">deletions</span>
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="diff-content" id="diffContent">
+                        <div class="empty-state">Select two commits to generate a diff</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-outline" id="diffViewerClose2">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Commit Details Modal -->
+        <div id="commitDetailsModal" class="modal">
+            <div class="modal-content modal-large">
+                <div class="modal-header">
+                    <h3 class="modal-title" id="commitDetailsTitle">📝 Commit Details</h3>
+                    <button class="modal-close" id="commitDetailsClose">×</button>
+                </div>
+                <div class="modal-body">
+                    <div class="commit-details-info">
+                        <div class="commit-detail-section">
+                            <h4>Commit Information</h4>
+                            <div class="commit-info-grid">
+                                <div class="commit-info-item">
+                                    <span class="commit-info-label">Hash:</span>
+                                    <span class="commit-info-value" id="commitDetailHash">-</span>
+                                </div>
+                                <div class="commit-info-item">
+                                    <span class="commit-info-label">Author:</span>
+                                    <span class="commit-info-value" id="commitDetailAuthor">-</span>
+                                </div>
+                                <div class="commit-info-item">
+                                    <span class="commit-info-label">Date:</span>
+                                    <span class="commit-info-value" id="commitDetailDate">-</span>
+                                </div>
+                                <div class="commit-info-item">
+                                    <span class="commit-info-label">Branch:</span>
+                                    <span class="commit-info-value" id="commitDetailBranch">-</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="commit-detail-section">
+                            <h4>Commit Message</h4>
+                            <div class="commit-message-content" id="commitDetailMessage">
+                                Loading...
+                            </div>
+                        </div>
+
+                        <div class="commit-detail-section">
+                            <h4>Changed Files</h4>
+                            <div class="commit-files-list" id="commitDetailFiles">
+                                <div class="empty-state">Loading files...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="checkoutCommitButton" class="btn btn-warning">🕰️ Checkout Commit</button>
+                    <button id="viewCommitDiffButton" class="btn btn-primary">🔄 View Diff</button>
+                    <button class="btn btn-outline" id="commitDetailsClose2">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Progress Indicator -->
+        <div id="progressIndicator" class="d-none">
+            <div class="status info">
+                <span id="progressIcon">⏳</span>
+                <span id="progressMessage">Processing...</span>
+            </div>
+        </div>
+    </main>
+
+    <!-- Load external dependencies -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.13.0/sql-wasm.js"></script>
+    
+    <!-- Load WebDVCS bundle -->
+    <script src="dist/webdvcs-browser.js"></script>
+    <script src="webdvcs-browser.js"></script>
+</body>
+</html>

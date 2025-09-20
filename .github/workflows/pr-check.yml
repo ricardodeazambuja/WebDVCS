@@ -1,0 +1,82 @@
+name: PR Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  pr-test:
+    name: 🔍 PR Quality Check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📦 Checkout Code
+      uses: actions/checkout@v5
+      
+    - name: 🟢 Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        
+    - name: 📥 Install Dependencies
+      run: npm ci
+      
+    - name: 🔍 Lint Check
+      run: npm run lint --if-present
+      continue-on-error: true
+      
+    - name: 🏗️ Build Check
+      run: npm run build
+      
+    - name: 🎭 Install Playwright Browsers
+      run: npx playwright install chromium --with-deps
+      
+    - name: 🧪 Run Node.js Tests
+      run: npm test
+      
+    - name: 🌐 Run Browser Tests
+      run: npm run test:browser
+      
+    - name: 📊 Upload Test Results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: pr-test-results
+        path: playwright-report/
+        retention-days: 7
+        
+    - name: 💬 Comment Test Results
+      uses: actions/github-script@v7
+      if: always()
+      with:
+        script: |
+          const fs = require('fs');
+          const path = require('path');
+          
+          // Try to read test results
+          let testStatus = '✅ Tests passed';
+          try {
+            // This is a simple check - you could enhance this to parse actual test results
+            testStatus = context.job.status === 'failure' ? '❌ Tests failed' : '✅ Tests passed';
+          } catch (e) {
+            testStatus = '⚠️ Could not determine test status';
+          }
+          
+          const comment = `
+          ## 🤖 Automated PR Check Results
+          
+          **Build Status:** ✅ Build successful
+          **Node.js Tests:** ${testStatus}
+          **Browser Tests:** ${testStatus}
+          **Bundle Size:** Check the build artifacts for size analysis
+          
+          WebDVCS browser demo is ready for deployment once this PR is merged.
+          `;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });

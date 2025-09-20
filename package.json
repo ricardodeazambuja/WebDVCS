@@ -1,0 +1,62 @@
+{
+  "name": "webdvcs",
+  "version": "1.0.0",
+  "description": "",
+  "main": "webdvcs-core.js",
+  "scripts": {
+    "build": "webpack --mode=development",
+    "build:prod": "webpack --mode=production",
+    "build:github": "webpack --mode=production && cp webdvcs-browser.html dist/index.html && cp styles.css dist/styles.css",
+    "test": "node tests/run-all.js",
+    "test:browser": "playwright test tests/browser",
+    "test:browser:headed": "playwright test tests/browser --headed",
+    "test:browser:debug": "playwright test tests/browser --debug",
+    "test:browser:ui": "playwright test tests/browser --ui",
+    "test:browser:report": "playwright show-report",
+    "test:repository": "playwright test tests/browser/repository-lifecycle.spec.js",
+    "test:files": "playwright test tests/browser/file-operations.spec.js",
+    "test:vcs": "playwright test tests/browser/vcs-operations.spec.js",
+    "test:ui": "playwright test tests/browser/ui-interactions.spec.js",
+    "test:all": "npm run test && npm run test:browser",
+    "ci": "./scripts/ci-cd-local.sh",
+    "ci:fast": "npm run build && npm run test",
+    "ci:full": "npm run build:github && npm run test:all",
+    "deploy:prepare": "npm run build:github",
+    "deploy:check": "echo 'Checking deployment readiness...' && ls -la dist/",
+    "serve": "python -m http.server 8080",
+    "build:cli": "pkg webdvcs.js --targets node20-win-x64,node20-macos-x64,node20-linux-x64 --out-path dist/cli",
+    "build:cli:win": "pkg webdvcs.js --targets node20-win-x64 --output dist/cli/webdvcs-win.exe",
+    "build:cli:mac": "pkg webdvcs.js --targets node20-macos-x64 --output dist/cli/webdvcs-macos",
+    "build:cli:linux": "pkg webdvcs.js --targets node20-linux-x64 --output dist/cli/webdvcs-linux"
+  },
+  "keywords": ["vcs", "version-control", "sqlite", "fossil", "cli", "browser"],
+  "author": "",
+  "license": "ISC",
+  "bin": {
+    "webdvcs": "./webdvcs.js"
+  },
+  "pkg": {
+    "assets": ["lib/**/*", "node_modules/better-sqlite3/**/*"],
+    "targets": ["node20-win-x64", "node20-macos-x64", "node20-linux-x64"],
+    "scripts": ["lib/**/*.js"]
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.2.0",
+    "sql.js": "^1.13.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "assert": "^2.1.0",
+    "browserify-zlib": "^0.2.0",
+    "buffer": "^6.0.3",
+    "crypto-browserify": "^3.12.1",
+    "path-browserify": "^1.0.1",
+    "pkg": "^5.8.1",
+    "process": "^0.11.10",
+    "stream-browserify": "^3.0.0",
+    "util": "^0.12.5",
+    "vm-browserify": "^1.1.2",
+    "webpack": "^5.101.3",
+    "webpack-cli": "^6.0.1"
+  }
+}

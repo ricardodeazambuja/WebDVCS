@@ -1,0 +1,87 @@
+name: CLI Integration Test
+
+on:
+  push:
+    branches: [ main, master, a_new_hope ]
+    paths:
+      - 'webdvcs*.js'
+      - 'lib/cli/**'
+      - 'lib/core/**'
+      - 'package*.json'
+  pull_request:
+    branches: [ main, master, a_new_hope ]
+    paths:
+      - 'webdvcs*.js'
+      - 'lib/cli/**'
+      - 'lib/core/**'
+      - 'package*.json'
+
+jobs:
+  cli-test:
+    name: 🖥️ CLI Integration Test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📦 Checkout Code
+      uses: actions/checkout@v5
+      
+    - name: 🟢 Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        
+    - name: 📥 Install Dependencies
+      run: npm ci
+      
+    - name: 🧪 Test CLI Basic Operations
+      run: |
+        # Create test repository
+        node webdvcs.js init test-repo
+        
+        # Set author configuration
+        node webdvcs.js test-repo config author.name "GitHub Actions"
+        node webdvcs.js test-repo config author.email "actions@github.com"
+        
+        # Add a test file
+        echo "Hello WebDVCS" > test-file.txt
+        node webdvcs.js test-repo add test-file.txt
+        
+        # Create commit
+        node webdvcs.js test-repo commit "Initial commit"
+        
+        # Check status
+        node webdvcs.js test-repo status
+        
+        # Check log
+        node webdvcs.js test-repo log 1
+
+        # Test branching and merge operations
+        echo "🌿 Testing branch and merge operations..."
+
+        # Create feature branch
+        node webdvcs.js test-repo branch feature
+        node webdvcs.js test-repo switch feature
+
+        # Add file on feature branch
+        echo "Feature content" > feature-file.txt
+        node webdvcs.js test-repo add feature-file.txt
+        node webdvcs.js test-repo commit "Add feature file"
+
+        # Switch back to main and merge
+        node webdvcs.js test-repo switch main
+        node webdvcs.js test-repo merge feature
+
+        # Verify merge worked
+        node webdvcs.js test-repo status
+
+        # Verify repository exists
+        test -f test-repo.sqlite
+
+        echo "✅ CLI integration test passed"
+        
+    - name: 🗑️ Cleanup
+      if: always()
+      run: |
+        rm -f test-repo.sqlite test-file.txt feature-file.txt
+        echo "Cleanup completed"
