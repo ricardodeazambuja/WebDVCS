@@ -1316,11 +1316,16 @@
                 // Use the worker method
                 const files = await currentRepo.getCommitFiles(commitHash);
 
-                // Extract file names from the array
-                const fileNames = files.map(file => file.name || file);
+                // Ensure consistent file object format for buildFileTree
+                const normalizedFiles = files.map(file => {
+                    if (typeof file === 'string') {
+                        return { path: file, name: file, _isStringFile: true };
+                    }
+                    return file;
+                });
 
                 // Build the modern file tree
-                buildFileTree(fileNames, elements.committedTree, 'committed');
+                buildFileTree(normalizedFiles, elements.committedTree, 'committed');
 
             } catch (error) {
                 console.error('Failed to load committed files:', error);
@@ -1651,11 +1656,12 @@
                 if (isFile) {
                     // File item
                     const filePath = node[key]._file.path || node[key]._file.name || key;
+                    const displayName = node[key]._file.name || node[key]._file.path || key;
                     item.className = 'tree-item';
                     item.innerHTML = `
                         <div class="tree-toggle"></div>
                         <div class="tree-icon">${getFileIcon(key)}</div>
-                        <div class="tree-name" title="${fullPath}">${key}</div>
+                        <div class="tree-name" title="${fullPath}">${displayName}</div>
                         <div class="file-actions-modern">
                             <button class="action-btn" onclick="viewFile('${filePath}', '${type}')" title="View">👁️</button>
                             <button class="action-btn" onclick="downloadFile('${filePath}', '${type}')" title="Download">💾</button>

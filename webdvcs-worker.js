@@ -421,14 +421,9 @@ self.addEventListener('message', async (event) => {
                     throw new Error('No repository loaded');
                 }
 
-                // Provide basic analytics
-                const stats = await currentRepo.getStats();
-                sendResponse(id, 'GET_STORAGE_ANALYTICS', true, {
-                    totalObjects: stats.totalCommits || 0,
-                    totalSize: 0,  // Not tracked in browser version
-                    deduplicationSavings: 0,  // Not tracked in browser version
-                    compressionRatio: 0  // Not tracked in browser version
-                });
+                // Get real analytics from repository
+                const analytics = currentRepo.getStorageAnalytics();
+                sendResponse(id, 'GET_STORAGE_ANALYTICS', true, analytics);
                 break;
             }
 
