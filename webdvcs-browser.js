@@ -133,7 +133,7 @@
 
             async getCurrentBranch() {
                 const result = await this.sendMessage('GET_CURRENT_BRANCH');
-                return result.currentBranch;
+                return result.branch;
             }
 
             async deleteBranch(branchName) {
@@ -1594,7 +1594,8 @@
             // Build directory structure
             const tree = {};
             files.forEach(file => {
-                const parts = file.split('/');
+                const filePath = file.path || file.name || file;
+                const parts = filePath.split('/');
                 let current = tree;
 
                 parts.forEach((part, index) => {
@@ -2668,7 +2669,8 @@
 
                 // Analyze staged files with defensive check
                 if (Array.isArray(stagedFiles)) {
-                    for (const fileName of stagedFiles) {
+                    for (const file of stagedFiles) {
+                    const fileName = file.name || file.path || file;
                     const extension = getFileExtension(fileName);
                     const fileType = getFileTypeCategory(extension);
 
