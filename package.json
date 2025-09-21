@@ -7,7 +7,7 @@
     "build": "webpack --mode=development && npm run build:copy-assets",
     "build:copy-assets": "node build-assets.js",
     "build:prod": "webpack --mode=production",
-    "build:github": "webpack --mode=production && cp webdvcs-browser.html dist/index.html && cp styles.css dist/styles.css",
+    "build:github": "webpack --mode=production && npm run build:copy-assets",
     "test": "node tests/run-all.js",
     "test:browser": "playwright test tests/browser",
     "test:browser:headed": "playwright test tests/browser --headed",
