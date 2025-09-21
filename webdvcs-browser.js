@@ -164,8 +164,32 @@
             }
 
             async getFileContent(filePath) {
-                const result = await this.sendMessage('GET_FILE_CONTENT', { filePath });
-                return result.content;
+                // First try to get from staged files (which already include content)
+                try {
+                    const stagedFiles = await this.getStagedFiles();
+                    const stagedFile = stagedFiles.find(f => f.path === filePath || f.name === filePath);
+                    if (stagedFile && stagedFile.content) {
+                        return stagedFile.content;
+                    }
+                } catch (error) {
+                    console.warn('Could not get from staged files:', error);
+                }
+
+                // Fallback: try to get from latest commit
+                try {
+                    const history = await this.getCommitHistory(1);
+                    if (history.length > 0) {
+                        const commitFiles = await this.getCommitFiles(history[0].hash);
+                        const commitFile = commitFiles.find(f => f.path === filePath || f.name === filePath);
+                        if (commitFile && commitFile.content) {
+                            return commitFile.content;
+                        }
+                    }
+                } catch (error) {
+                    console.warn('Could not get from commit files:', error);
+                }
+
+                throw new Error(`File not found: ${filePath}`);
             }
 
             async getFileFromCommit(fileName, commitHash) {
@@ -1109,11 +1133,16 @@
                 // Update tab label
                 elements.stagedTab.textContent = `📦 Staging Area (${count})`;
 
-                // Convert to file names if needed
-                const fileNames = files.map(file => typeof file === 'string' ? file : file.name);
+                // Ensure consistent file object format for buildFileTree
+                const normalizedFiles = files.map(file => {
+                    if (typeof file === 'string') {
+                        return { path: file, name: file, _isStringFile: true };
+                    }
+                    return file;
+                });
 
                 // Build the modern file tree
-                buildFileTree(fileNames, elements.stagedTree, 'staged');
+                buildFileTree(normalizedFiles, elements.stagedTree, 'staged');
 
             } catch (error) {
                 console.error('Failed to refresh staged files:', error);
@@ -1621,16 +1650,17 @@
 
                 if (isFile) {
                     // File item
+                    const filePath = node[key]._file.path || node[key]._file.name || key;
                     item.className = 'tree-item';
                     item.innerHTML = `
                         <div class="tree-toggle"></div>
                         <div class="tree-icon">${getFileIcon(key)}</div>
                         <div class="tree-name" title="${fullPath}">${key}</div>
                         <div class="file-actions-modern">
-                            <button class="action-btn" onclick="viewFile('${node[key]._file}', '${type}')" title="View">👁️</button>
-                            <button class="action-btn" onclick="downloadFile('${node[key]._file}', '${type}')" title="Download">💾</button>
-                            ${type === 'staged' ? `<button class="action-btn unstage" onclick="unstageFile('${node[key]._file}')" title="Unstage file">📤</button>` : ''}
-                            ${type === 'staged' ? `<button class="action-btn delete" onclick="deleteFile('${node[key]._file}')" title="Permanently delete file">🗑️</button>` : ''}
+                            <button class="action-btn" onclick="viewFile('${filePath}', '${type}')" title="View">👁️</button>
+                            <button class="action-btn" onclick="downloadFile('${filePath}', '${type}')" title="Download">💾</button>
+                            ${type === 'staged' ? `<button class="action-btn unstage" onclick="unstageFile('${filePath}')" title="Unstage file">📤</button>` : ''}
+                            ${type === 'staged' ? `<button class="action-btn delete" onclick="deleteFile('${filePath}')" title="Permanently delete file">🗑️</button>` : ''}
                         </div>
                     `;
                 } else {

@@ -198,6 +198,22 @@ self.addEventListener('message', async (event) => {
                 break;
             }
 
+            case 'GET_FILE_FROM_COMMIT': {
+                if (!currentRepo) {
+                    throw new Error('No repository loaded');
+                }
+
+                const files = await currentRepo.getCommitFiles(data.commitHash);
+                const file = files.find(f => f.path === data.fileName || f.name === data.fileName);
+
+                if (!file) {
+                    throw new Error(`File ${data.fileName} not found in commit ${data.commitHash}`);
+                }
+
+                sendResponse(id, 'GET_FILE_FROM_COMMIT', true, { content: file.content });
+                break;
+            }
+
             case 'GET_STATUS': {
                 if (!currentRepo) {
                     throw new Error('No repository loaded');
