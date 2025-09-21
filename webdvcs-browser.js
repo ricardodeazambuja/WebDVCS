@@ -73,8 +73,8 @@
                 return result;
             }
 
-            async loadRepository(buffer) {
-                const result = await this.sendMessage('LOAD_REPO', { buffer });
+            async loadRepository(buffer, fileName = null) {
+                const result = await this.sendMessage('LOAD_REPO', { buffer, fileName });
                 this.repoName = result.name;
                 return result;
             }
@@ -103,6 +103,10 @@
                 return this.sendMessage('GET_COMMITS', { limit });
             }
 
+            async diffCommits(fromCommit, toCommit) {
+                return this.sendMessage('DIFF', { fromCommit, toCommit });
+            }
+
             async getStats() {
                 return this.sendMessage('GET_STATS');
             }
@@ -125,6 +129,14 @@
 
             async switchBranch(targetBranch) {
                 return this.sendMessage('SWITCH_BRANCH', { targetBranch });
+            }
+
+            async deleteBranch(branchName) {
+                return this.sendMessage('DELETE_BRANCH', { branchName });
+            }
+
+            async merge(branchName, options = {}) {
+                return this.sendMessage('MERGE', { branchName, options });
             }
 
             async listBranches() {
@@ -254,6 +266,8 @@
             createBranchButton: document.getElementById('createBranchButton'),
             branchSelect: document.getElementById('branchSelect'),
             switchBranchButton: document.getElementById('switchBranchButton'),
+            deleteBranchSelect: document.getElementById('deleteBranchSelect'),
+            deleteBranchButton: document.getElementById('deleteBranchButton'),
             branchItems: document.getElementById('branchItems'),
             currentBranch: document.getElementById('currentBranch'),
             exportBranchSelect: document.getElementById('exportBranchSelect'),
@@ -324,6 +338,7 @@
             // Branches
             elements.createBranchButton.addEventListener('click', createBranch);
             elements.switchBranchButton.addEventListener('click', switchBranch);
+            elements.deleteBranchButton.addEventListener('click', deleteBranch);
             elements.exportBranchButton.addEventListener('click', exportBranch);
             elements.importBranchButton.addEventListener('click', importBranch);
 
@@ -447,7 +462,9 @@
                 showProgress('Loading repository...');
                 const arrayBuffer = await file.arrayBuffer();
                 const data = new Uint8Array(arrayBuffer);
-                await currentRepo.loadRepository(data);
+
+                // Pass filename to worker for proper repo naming
+                await currentRepo.loadRepository(data, file.name);
 
                 // Load repository name and author info
                 const repoName = currentRepo.storage.getMeta('repository_name');
@@ -619,6 +636,37 @@
             } catch (error) {
                 console.error('Failed to switch branch:', error);
                 updateStatus(`❌ Failed to switch branch: ${error.message}`, 'error');
+                hideProgress();
+            }
+        }
+
+        async function deleteBranch() {
+            const name = elements.deleteBranchSelect.value;
+            if (!name) {
+                updateStatus('❌ Please select a branch to delete.', 'error');
+                return;
+            }
+
+            if (!currentRepo) {
+                updateStatus('❌ No repository loaded.', 'error');
+                return;
+            }
+
+            // Confirm deletion
+            if (!confirm(`Are you sure you want to delete branch '${name}'? This action cannot be undone.`)) {
+                return;
+            }
+
+            try {
+                showProgress(`Deleting branch '${name}'...`);
+                const result = await currentRepo.deleteBranch(name);
+                updateStatus(`✅ Branch '${name}' deleted successfully`, 'success');
+                await refreshAll();
+                hideProgress();
+
+            } catch (error) {
+                console.error('Failed to delete branch:', error);
+                updateStatus(`❌ Failed to delete branch: ${error.message}`, 'error');
                 hideProgress();
             }
         }
@@ -1020,7 +1068,7 @@
             }
 
             const filesHtml = fileChanges.map(change => {
-                const fileName = change.file;
+                const fileName = change.file.name || change.file.path || change.file;
                 const changeType = change.type || 'modified';
                 const statusClass = changeType === 'added' ? 'added' :
                                    changeType === 'deleted' ? 'deleted' : 'modified';
@@ -1087,9 +1135,13 @@
                 elements.branchSelect.innerHTML = '<option value="">Select branch</option>' +
                     branches.map(branch => `<option value="${branch.name}" ${branch.name === current ? 'selected' : ''}>${branch.name}</option>`).join('');
 
-                // Update export branch select
+                // Update export branch select (only show branches with commits)
                 elements.exportBranchSelect.innerHTML = '<option value="">Select branch to export</option>' +
-                    branches.filter(branch => branch.head).map(branch => `<option value="${branch.name}">${branch.name}</option>`).join('');
+                    branches.filter(branch => branch.hash).map(branch => `<option value="${branch.name}">${branch.name}</option>`).join('');
+
+                // Update delete branch select (exclude current branch)
+                elements.deleteBranchSelect.innerHTML = '<option value="">Select branch to delete</option>' +
+                    branches.filter(branch => branch.name !== current).map(branch => `<option value="${branch.name}">${branch.name}</option>`).join('');
 
                 // Update branch list
                 elements.branchItems.innerHTML = branches.map(branch => `
@@ -1127,7 +1179,7 @@
             try {
                 // Use getStagedFiles to get ONLY staged files, not committed files
                 const filesResult = await currentRepo.getStagedFiles();
-                const files = Array.isArray(filesResult) ? filesResult : (filesResult?.files || []);
+                const files = Array.isArray(filesResult) ? filesResult : ((filesResult && filesResult.files) || []);
                 const count = files.length;
 
                 // Update tab label
@@ -1185,7 +1237,7 @@
 
                 // Get staged files with defensive check
                 const stagedFilesResult = currentRepo.getStagedFiles ? await currentRepo.getStagedFiles() : [];
-                const stagedFiles = Array.isArray(stagedFilesResult) ? stagedFilesResult : (stagedFilesResult?.files || []);
+                const stagedFiles = Array.isArray(stagedFilesResult) ? stagedFilesResult : ((stagedFilesResult && stagedFilesResult.files) || []);
                 const stagedCount = stagedFiles.length;
 
                 // Get repository state
@@ -1196,11 +1248,6 @@
 
                 document.getElementById('repoStateStatus').textContent = repoState;
 
-                // Update staged files section
-                updateStatusSection('stagedFiles', stagedFiles, 'No files staged for commit');
-
-                // Update HEAD files section (files in current commit)
-                await updateHeadFilesSection();
 
                 // Update repository summary
                 await updateRepositorySummary();
@@ -1211,70 +1258,7 @@
             }
         }
 
-        function updateStatusSection(sectionType, files, emptyMessage) {
-            const countElement = document.getElementById(`${sectionType}Count`);
-            const listElement = document.getElementById(`${sectionType}List`);
 
-            // Update count
-            countElement.textContent = `(${files.length})`;
-
-            // Update file list
-            if (files.length === 0) {
-                listElement.innerHTML = `<div class="empty-state">${emptyMessage}</div>`;
-            } else {
-                listElement.innerHTML = files.map(fileName => `
-                    <div class="status-file-item">
-                        <span class="status-file-name">${fileName}</span>
-                        <div class="status-file-actions">
-                            ${sectionType === 'stagedFiles' ?
-                                `<button class="status-file-action" onclick="unstageFile('${fileName}')">📤 Unstage</button>
-                                 <button class="status-file-action" onclick="viewFile('${fileName}', 'staged')">👁️ View</button>
-                                 <button class="status-file-action danger" onclick="deleteFile('${fileName}')">🗑️ Delete</button>` :
-                                `<button class="status-file-action" onclick="viewFile('${fileName}', 'committed')">👁️ View</button>`
-                            }
-                        </div>
-                    </div>
-                `).join('');
-            }
-        }
-
-        async function updateHeadFilesSection() {
-            try {
-                const commits = await currentRepo.getCommits(1);
-                const headFilesElement = document.getElementById('headFilesList');
-                const headFilesCountElement = document.getElementById('headFilesCount');
-
-                if (commits.length === 0) {
-                    // No commits yet
-                    headFilesCountElement.textContent = '(0)';
-                    headFilesElement.innerHTML = '<div class="empty-state">No commits yet - create your first commit to see files</div>';
-                    return;
-                }
-
-                const latestCommit = commits[0];
-                const files = await currentRepo.getCommitFiles(latestCommit.hash);
-                const fileNames = files.map(file => file.name || file);
-
-                headFilesCountElement.textContent = `(${fileNames.length})`;
-
-                if (fileNames.length === 0) {
-                    headFilesElement.innerHTML = '<div class="empty-state">No files in current commit</div>';
-                } else {
-                    headFilesElement.innerHTML = fileNames.map(fileName => `
-                        <div class="status-file-item">
-                            <span class="status-file-name">${fileName}</span>
-                            <div class="status-file-actions">
-                                <button class="status-file-action" onclick="viewFile('${fileName}', 'committed')">👁️ View</button>
-                                <button class="status-file-action" onclick="downloadFile('${fileName}', 'committed')">💾 Download</button>
-                            </div>
-                        </div>
-                    `).join('');
-                }
-            } catch (error) {
-                console.error('Failed to update HEAD files section:', error);
-                document.getElementById('headFilesList').innerHTML = '<div class="empty-state">Error loading current commit files</div>';
-            }
-        }
 
         async function updateRepositorySummary() {
             try {
@@ -1728,9 +1712,9 @@
                     let parent = item.parentElement;
                     while (parent && parent.classList.contains('tree-children')) {
                         parent.classList.remove('collapsed');
-                        const toggle = parent.previousElementSibling?.querySelector('.tree-toggle');
+                        const toggle = parent.previousElementSibling && parent.previousElementSibling.querySelector('.tree-toggle');
                         if (toggle) toggle.textContent = '▼';
-                        parent = parent.parentElement?.parentElement;
+                        parent = parent.parentElement && parent.parentElement.parentElement;
                     }
                 }
             });
@@ -1872,7 +1856,7 @@
 
             try {
                 const stagedFilesResult = await currentRepo.getStagedFiles();
-                const stagedFiles = Array.isArray(stagedFilesResult) ? stagedFilesResult : (stagedFilesResult?.files || []);
+                const stagedFiles = Array.isArray(stagedFilesResult) ? stagedFilesResult : ((stagedFilesResult && stagedFilesResult.files) || []);
 
                 if (stagedFiles.length === 0) {
                     updateStatus('ℹ️ No staged files to delete.', 'info');
@@ -1901,7 +1885,7 @@
 
             try {
                 const stagedFilesResult = await currentRepo.getStagedFiles();
-                const stagedFiles = Array.isArray(stagedFilesResult) ? stagedFilesResult : (stagedFilesResult?.files || []);
+                const stagedFiles = Array.isArray(stagedFilesResult) ? stagedFilesResult : ((stagedFilesResult && stagedFilesResult.files) || []);
 
                 if (stagedFiles.length === 0) {
                     updateStatus('ℹ️ No files to unstage.', 'info');
@@ -2399,12 +2383,24 @@
                 // Perform merge preview using repository merge functionality
                 const mergeResult = await currentRepo.merge(sourceBranch, { preview: true });
 
+                // Extract the actual merge result from worker response structure
+                const actualResult = (mergeResult && mergeResult.result) || mergeResult;
+
+                // Ensure mergeResult has expected structure with safe defaults
+                const safeResult = {
+                    success: actualResult && actualResult.success !== undefined ? actualResult.success : (actualResult && actualResult.type !== 'conflict'),
+                    type: actualResult && actualResult.type !== undefined ? actualResult.type : 'unknown',
+                    commitHash: actualResult && actualResult.commitHash !== undefined ? actualResult.commitHash : null,
+                    conflicts: actualResult && actualResult.conflicts !== undefined ? actualResult.conflicts : [],
+                    message: (mergeResult && mergeResult.message) || (actualResult && actualResult.message) || 'No details available'
+                };
+
                 // Store preview data
-                mergeState.previewData = mergeResult;
-                mergeState.conflictsDetected = mergeResult.conflicts && mergeResult.conflicts.length > 0;
+                mergeState.previewData = safeResult;
+                mergeState.conflictsDetected = !safeResult.success || safeResult.type === 'conflict' || (safeResult.conflicts && safeResult.conflicts.length > 0);
 
                 // Display merge preview
-                displayMergePreview(mergeResult);
+                displayMergePreview(safeResult);
 
                 hideProgress();
 
@@ -2426,16 +2422,21 @@
                 mergeStatus.style.display = 'block';
             }
 
-            if (mergeResult.conflicts && mergeResult.conflicts.length > 0) {
+            // Check for conflicts using the proper merge result structure
+            const hasConflicts = !mergeResult.success || mergeResult.type === 'conflict' || (mergeResult.conflicts && mergeResult.conflicts.length > 0);
+
+            if (hasConflicts) {
                 // Show conflicts
                 mergeState.conflictsDetected = true;
+
+                const conflictCount = (mergeResult.conflicts && mergeResult.conflicts.length) || 0;
 
                 if (mergeSummary) {
                     mergeSummary.innerHTML = `
                         <strong>⚠️ Merge cannot be completed automatically</strong><br>
                         Source: <code>${mergeState.sourceBranch}</code><br>
                         Target: <code>${mergeState.targetBranch}</code><br>
-                        Conflicts: <strong>${mergeResult.conflicts.length}</strong> file(s)
+                        Conflicts: <strong>${conflictCount}</strong> file(s)
                     `;
                 }
 
@@ -2443,7 +2444,7 @@
                     mergeConflicts.style.display = 'block';
                 }
 
-                if (conflictList) {
+                if (conflictList && mergeResult.conflicts && mergeResult.conflicts.length > 0) {
                     const conflictsHtml = mergeResult.conflicts.map(conflict => `
                         <div class="conflict-item">
                             <div class="conflict-file">${conflict.file}</div>
@@ -2451,6 +2452,8 @@
                         </div>
                     `).join('');
                     conflictList.innerHTML = conflictsHtml;
+                } else if (conflictList) {
+                    conflictList.innerHTML = '<div class="conflict-item">No conflict details available</div>';
                 }
 
                 updateStatus('⚠️ Merge conflicts detected. Review conflicts before proceeding.', 'warning');
@@ -2650,13 +2653,18 @@
                     analytics.totalObjects = repoAnalytics.totalObjects || 0;
                     analytics.totalSize = repoAnalytics.totalSize || 0;
                     analytics.compressionRatio = repoAnalytics.compressionRatio || 0;
+                    analytics.deduplicationSavings = repoAnalytics.deduplicationSavings || 0;
 
                     // Map object breakdown to expected UI format
                     if (repoAnalytics.objectBreakdown) {
-                        analytics.objectBreakdown.commits = repoAnalytics.objectBreakdown.commit || 0;
-                        analytics.objectBreakdown.trees = repoAnalytics.objectBreakdown.tree || 0;
-                        analytics.objectBreakdown.blobs = repoAnalytics.objectBreakdown.blob || 0;
+                        analytics.objectBreakdown.commits = repoAnalytics.objectBreakdown.commits || 0;
+                        analytics.objectBreakdown.trees = repoAnalytics.objectBreakdown.trees || 0;
+                        analytics.objectBreakdown.blobs = repoAnalytics.objectBreakdown.blobs || 0;
                     }
+
+                    // Use backend-calculated efficiency metrics
+                    analytics.efficiency.averageFileSize = repoAnalytics.averageFileSize || 0;
+                    analytics.efficiency.largestObject = repoAnalytics.largestObject || 0;
                 } else {
                     // Fallback: calculate analytics manually
                     await calculateAnalyticsManually(analytics);
@@ -2681,7 +2689,7 @@
 
                 // Get staged files
                 const stagedFilesResult = await currentRepo.getStagedFiles();
-                const stagedFiles = Array.isArray(stagedFilesResult) ? stagedFilesResult : (stagedFilesResult?.files || []);
+                const stagedFiles = Array.isArray(stagedFilesResult) ? stagedFilesResult : ((stagedFilesResult && stagedFilesResult.files) || []);
                 analytics.objectBreakdown.blobs += stagedFiles.length;
 
                 // Estimate total objects
@@ -2689,9 +2697,7 @@
                                         analytics.objectBreakdown.blobs +
                                         analytics.objectBreakdown.trees;
 
-                // Calculate basic metrics
-                analytics.efficiency.averageFileSize = stagedFiles.length > 0 ?
-                    Math.round(analytics.totalSize / stagedFiles.length) : 0;
+                // Note: efficiency metrics now calculated by backend
 
             } catch (error) {
                 console.error('Failed to calculate manual analytics:', error);
@@ -2700,36 +2706,29 @@
 
         async function analyzeFileTypes(analytics) {
             try {
-                const stagedFilesResult = currentRepo.getStagedFiles ? await currentRepo.getStagedFiles() : [];
-                const stagedFiles = Array.isArray(stagedFilesResult) ? stagedFilesResult : (stagedFilesResult?.files || []);
+                // Get all files from the latest commit instead of just staged files
+                const commits = await currentRepo.getCommits(1);
+                if (commits.length === 0) {
+                    return; // No commits yet
+                }
 
-                // Analyze staged files with defensive check
-                if (Array.isArray(stagedFiles)) {
-                    for (const file of stagedFiles) {
+                const latestCommitFiles = await currentRepo.getCommitFiles(commits[0].hash);
+
+                for (const file of latestCommitFiles) {
                     const fileName = file.name || file.path || file;
                     const extension = getFileExtension(fileName);
                     const fileType = getFileTypeCategory(extension);
 
                     if (!analytics.fileTypes[fileType]) {
-                        analytics.fileTypes[fileType] = { count: 0, size: 0, extension };
+                        analytics.fileTypes[fileType] = { count: 0, size: 0, extensions: new Set() };
                     }
 
                     analytics.fileTypes[fileType].count++;
+                    analytics.fileTypes[fileType].extensions.add(extension);
 
-                    // Try to get file size if possible
-                    try {
-                        const content = await currentRepo.getFileContent(fileName);
-                        const size = content ? (content.byteLength || content.length || 0) : 0;
-                        analytics.fileTypes[fileType].size += size;
-
-                        // Track largest object
-                        if (size > analytics.efficiency.largestObject) {
-                            analytics.efficiency.largestObject = size;
-                        }
-                    } catch (err) {
-                        // Skip files that can't be read
-                    }
-                    }
+                    // Use the file size from the commit data
+                    const size = file.size || 0;
+                    analytics.fileTypes[fileType].size += size;
                 }
 
             } catch (error) {
@@ -2790,18 +2789,19 @@
 
             // Calculate and display efficiency
             const efficiency = analytics.totalObjects > 0 ?
-                Math.min(100, ((analytics.objectBreakdown?.blobs || 0) / analytics.totalObjects) * 100) : 0;
+                Math.min(100, (((analytics.objectBreakdown && analytics.objectBreakdown.blobs) || 0) / analytics.totalObjects) * 100) : 0;
             document.getElementById('efficiency').textContent = `${efficiency.toFixed(1)}%`;
 
             // Update object breakdown with safe fallbacks
-            document.getElementById('commitObjects').textContent = (analytics.objectBreakdown?.commits || 0).toLocaleString();
-            document.getElementById('treeObjects').textContent = (analytics.objectBreakdown?.trees || 0).toLocaleString();
-            document.getElementById('blobObjects').textContent = (analytics.objectBreakdown?.blobs || 0).toLocaleString();
+            document.getElementById('commitObjects').textContent = ((analytics.objectBreakdown && analytics.objectBreakdown.commits) || 0).toLocaleString();
+            document.getElementById('treeObjects').textContent = ((analytics.objectBreakdown && analytics.objectBreakdown.trees) || 0).toLocaleString();
+            document.getElementById('blobObjects').textContent = ((analytics.objectBreakdown && analytics.objectBreakdown.blobs) || 0).toLocaleString();
 
             // Update efficiency metrics with safe fallbacks
-            document.getElementById('deduplicationSavings').textContent = 'N/A'; // Could be calculated if data available
-            document.getElementById('averageFileSize').textContent = formatFileSize(analytics.efficiency?.averageFileSize || 0);
-            document.getElementById('largestObject').textContent = formatFileSize(analytics.efficiency?.largestObject || 0);
+            const deduplicationSavings = analytics.deduplicationSavings || 0;
+            document.getElementById('deduplicationSavings').textContent = `${deduplicationSavings.toFixed(1)}%`;
+            document.getElementById('averageFileSize').textContent = formatFileSize((analytics.efficiency && analytics.efficiency.averageFileSize) || 0);
+            document.getElementById('largestObject').textContent = formatFileSize((analytics.efficiency && analytics.efficiency.largestObject) || 0);
 
             // Display file type analysis
             displayFileTypeAnalysis(analytics.fileTypes);
@@ -2954,7 +2954,7 @@
                 showProgress('Generating diff...');
 
                 // Get diff from repository
-                const diff = currentRepo.diffCommits(fromCommit, toCommit);
+                const diff = await currentRepo.diffCommits(fromCommit, toCommit);
 
                 // Display the diff
                 displayDiff(diff, fromCommit, toCommit);
@@ -2995,7 +2995,7 @@
             }
 
             const diffHtml = diff.map(fileDiff => {
-                const fileName = fileDiff.file;
+                const fileName = fileDiff.file.name || fileDiff.file.path || fileDiff.file;
                 const diffType = fileDiff.type;
 
                 let diffContentHtml = '';

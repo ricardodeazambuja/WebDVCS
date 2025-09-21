@@ -115,28 +115,6 @@
                 </div>
 
                 <div class="status-sections">
-                    <!-- Staged Files -->
-                    <div class="status-section" id="stagedFilesSection">
-                        <h4 class="status-section-title">
-                            📦 Staged Files
-                            <span class="status-count" id="stagedFilesCount">(0)</span>
-                        </h4>
-                        <div class="status-file-list" id="stagedFilesList">
-                            <div class="empty-state">No files staged for commit</div>
-                        </div>
-                    </div>
-
-                    <!-- Current HEAD Files -->
-                    <div class="status-section" id="headFilesSection">
-                        <h4 class="status-section-title">
-                            📄 Current Commit Files
-                            <span class="status-count" id="headFilesCount">(0)</span>
-                        </h4>
-                        <div class="status-file-list" id="headFilesList">
-                            <div class="empty-state">No commits yet - create your first commit to see files</div>
-                        </div>
-                    </div>
-
                     <!-- Repository Summary -->
                     <div class="status-section" id="repoSummarySection">
                         <h4 class="status-section-title">
@@ -389,7 +367,15 @@
                         </select>
                         <button id="switchBranchButton" class="btn btn-secondary">🔄 Switch Branch</button>
                     </div>
-                    
+
+                    <div class="mb-2">
+                        <label for="deleteBranchSelect">Delete Branch:</label>
+                        <select id="deleteBranchSelect">
+                            <option value="">Select branch to delete</option>
+                        </select>
+                        <button id="deleteBranchButton" class="btn btn-danger">🗑️ Delete Branch</button>
+                    </div>
+
                     <div id="branchList" class="branch-list">
                         <h3>All Branches</h3>
                         <div id="currentBranch" class="text-muted">No repository loaded</div>

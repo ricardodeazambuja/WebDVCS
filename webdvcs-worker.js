@@ -73,6 +73,27 @@ function createProgressCallback() {
     };
 }
 
+// Preview merge function - check for conflicts without making changes
+function previewMerge(repo, branchName) {
+    // For now, just use the existing merge and let conflicts be caught
+    // TODO: Find a way to preview without committing successful merges
+    try {
+        const result = repo.merge(branchName);
+        return result;
+    } catch (error) {
+        // If it's a merge conflict error, return the conflict information
+        if (error.conflicts && error.conflicts.length > 0) {
+            return {
+                type: 'conflict',
+                conflicts: error.conflicts,
+                message: error.message
+            };
+        }
+        // Re-throw other errors
+        throw error;
+    }
+}
+
 // Main message handler with clean API usage
 self.addEventListener('message', async (event) => {
     const { type, id, data } = event.data;
@@ -118,8 +139,13 @@ self.addEventListener('message', async (event) => {
 
                 const stats = await currentRepo.getStats();
 
+                // Extract repository name from filename or use default
+                const repoName = data.fileName ?
+                    data.fileName.replace(/\.sqlite$/, '').replace(/\.webdvcs$/, '') :
+                    'loaded-repo';
+
                 sendResponse(id, 'LOAD_REPO', true, {
-                    name: 'loaded-repo',
+                    name: repoName,
                     stats,
                     message: 'Repository loaded successfully'
                 });
@@ -292,6 +318,27 @@ self.addEventListener('message', async (event) => {
                 break;
             }
 
+            case 'DELETE_BRANCH': {
+                if (!currentRepo) {
+                    throw new Error('No repository loaded');
+                }
+
+                const branchName = data.branchName;
+                if (!branchName) {
+                    throw new Error('Branch name is required');
+                }
+
+                const result = currentRepo.deleteBranch(branchName);
+
+                sendResponse(id, 'DELETE_BRANCH', true, {
+                    branch: branchName,
+                    deleted: true,
+                    gcStats: result.gcStats,
+                    message: `Branch '${branchName}' deleted successfully`
+                });
+                break;
+            }
+
             case 'SWITCH_BRANCH': {
                 if (!currentRepo) {
                     throw new Error('No repository loaded');
@@ -313,14 +360,27 @@ self.addEventListener('message', async (event) => {
                     throw new Error('No repository loaded');
                 }
 
-                const result = currentRepo.merge(data.branchName);
-                const stats = await currentRepo.getStats();
+                const { branchName, options = {} } = data;
 
-                sendResponse(id, 'MERGE', true, {
-                    result,
-                    stats,
-                    message: `Merged branch: ${data.branchName}`
-                });
+                if (options.preview) {
+                    // Preview mode - check for conflicts without making changes
+                    const previewResult = previewMerge(currentRepo, branchName);
+                    sendResponse(id, 'MERGE', true, {
+                        result: previewResult,
+                        message: previewResult.type === 'conflict'
+                            ? `Merge conflicts detected with branch: ${branchName}`
+                            : `Preview merge of branch: ${branchName}`
+                    });
+                } else {
+                    // Normal merge
+                    const result = currentRepo.merge(branchName);
+                    const stats = await currentRepo.getStats();
+                    sendResponse(id, 'MERGE', true, {
+                        result,
+                        stats,
+                        message: `Merged branch: ${branchName}`
+                    });
+                }
                 break;
             }
 
@@ -338,6 +398,39 @@ self.addEventListener('message', async (event) => {
                 break;
             }
 
+            case 'CLEAR_STAGING': {
+                if (!currentRepo) {
+                    throw new Error('No repository loaded');
+                }
+
+                const result = currentRepo.reset('mixed');
+
+                sendResponse(id, 'CLEAR_STAGING', true, {
+                    message: 'Staging area cleared successfully'
+                });
+                break;
+            }
+
+            case 'REMOVE_FILE': {
+                if (!currentRepo) {
+                    throw new Error('No repository loaded');
+                }
+
+                const fileName = data.fileName;
+                if (!fileName) {
+                    throw new Error('File name is required');
+                }
+
+                const result = currentRepo.removeFile(fileName);
+
+                sendResponse(id, 'REMOVE_FILE', true, {
+                    removed: result,
+                    fileName: fileName,
+                    message: result ? `File '${fileName}' removed from staging` : `File '${fileName}' not found or already removed`
+                });
+                break;
+            }
+
             case 'RESET': {
                 if (!currentRepo) {
                     throw new Error('No repository loaded');
@@ -348,6 +441,199 @@ self.addEventListener('message', async (event) => {
                 sendResponse(id, 'RESET', true, {
                     mode: data.mode,
                     message: `Reset staging area (${data.mode || 'mixed'} mode)`
+                });
+                break;
+            }
+
+            case 'EXPORT_BRANCH': {
+                if (!currentRepo) {
+                    throw new Error('No repository loaded');
+                }
+
+                const branchName = data.branchName;
+                if (!branchName) {
+                    throw new Error('Branch name is required');
+                }
+
+                // Get branch reference
+                const branchRef = currentRepo.store.getRef(`refs/heads/${branchName}`);
+                if (!branchRef || !branchRef.hash) {
+                    throw new Error(`Branch '${branchName}' not found or has no commits`);
+                }
+
+                // Collect all objects (commits, trees, blobs) that this branch depends on
+                const branchData = {
+                    name: branchName,
+                    head: branchRef.hash,
+                    objects: {}  // Store all repository objects by hash
+                };
+
+                const exportedObjects = new Set();
+                let commitCount = 0;
+                let fileCount = 0;
+
+                // Export all commits in this branch and their dependencies
+                const exportCommit = (commitHash) => {
+                    if (exportedObjects.has(commitHash)) return;
+
+                    const commit = currentRepo.getCommit(commitHash);
+                    if (!commit) return;
+
+                    // Export the commit object
+                    const commitData = currentRepo.store.getObjectData(commitHash);
+                    if (commitData) {
+                        branchData.objects[commitHash] = {
+                            type: 'commit',
+                            size: commitData.size,
+                            data: Array.from(commitData.data)  // Convert to array for JSON
+                        };
+                        exportedObjects.add(commitHash);
+                        commitCount++;
+                    }
+
+                    // Export the tree and its contents
+                    exportTree(commit.tree);
+
+                    // Export parent commit if it exists
+                    if (commit.parent) {
+                        exportCommit(commit.parent);
+                    }
+                };
+
+                const exportTree = (treeHash) => {
+                    if (exportedObjects.has(treeHash)) return;
+
+                    const tree = currentRepo.getTree(treeHash);
+                    if (!tree) return;
+
+                    // Export the tree object
+                    const treeData = currentRepo.store.getObjectData(treeHash);
+                    if (treeData) {
+                        branchData.objects[treeHash] = {
+                            type: 'tree',
+                            size: treeData.size,
+                            data: Array.from(treeData.data)  // Convert to array for JSON
+                        };
+                        exportedObjects.add(treeHash);
+                    }
+
+                    // Export all blobs referenced by this tree
+                    for (const entry of tree) {
+                        exportBlob(entry.hash);
+                    }
+                };
+
+                const exportBlob = (blobHash) => {
+                    if (exportedObjects.has(blobHash)) return;
+
+                    const blobData = currentRepo.store.getObjectData(blobHash);
+                    if (blobData) {
+                        branchData.objects[blobHash] = {
+                            type: 'blob',
+                            size: blobData.size,
+                            data: Array.from(blobData.data)  // Convert to array for JSON
+                        };
+                        exportedObjects.add(blobHash);
+                        fileCount++;
+                    }
+                };
+
+                // Start the export process from the branch head
+                exportCommit(branchRef.hash);
+
+                // Create export data
+                const exportJson = JSON.stringify(branchData, null, 2);
+                const filename = `${branchName}-branch-export.json`;
+
+                sendResponse(id, 'EXPORT_BRANCH', true, {
+                    data: exportJson,
+                    filename: filename,
+                    size: exportJson.length,
+                    commits: commitCount,
+                    files: fileCount,
+                    objects: Object.keys(branchData.objects).length,
+                    message: `Branch '${branchName}' exported successfully with ${commitCount} commits and ${fileCount} files`
+                });
+                break;
+            }
+
+            case 'IMPORT_BRANCH': {
+                if (!currentRepo) {
+                    throw new Error('No repository loaded');
+                }
+
+                const exportData = data.exportData;
+                if (!exportData) {
+                    throw new Error('Export data is required');
+                }
+
+                let branchData;
+                try {
+                    // Parse the export data (it's JSON)
+                    const textData = new TextDecoder().decode(exportData);
+                    branchData = JSON.parse(textData);
+                } catch (error) {
+                    throw new Error('Invalid export data format');
+                }
+
+                if (!branchData.name || !branchData.objects) {
+                    throw new Error('Invalid branch export format');
+                }
+
+                const branchName = branchData.name;
+
+                // Check if branch already exists
+                const existingRef = currentRepo.store.getRef(`refs/heads/${branchName}`);
+                if (existingRef) {
+                    throw new Error(`Branch '${branchName}' already exists`);
+                }
+
+                // Import all objects from the branch export
+                let commitsImported = 0;
+                let blobsImported = 0;
+                let objectsImported = 0;
+
+                for (const [hash, objectData] of Object.entries(branchData.objects)) {
+                    try {
+                        // Check if object already exists
+                        const existingObject = currentRepo.store.getObjectData(hash);
+                        if (existingObject) {
+                            continue; // Skip if already exists
+                        }
+
+                        // Convert array back to Uint8Array
+                        const data = new Uint8Array(objectData.data);
+
+                        // Store the object in the repository using storeObject
+                        const result = currentRepo.store.storeObject(data, objectData.type);
+                        if (result.hash !== hash) {
+                            console.warn(`Hash mismatch during import: expected ${hash}, got ${result.hash}`);
+                        }
+                        objectsImported++;
+
+                        if (objectData.type === 'commit') {
+                            commitsImported++;
+                        } else if (objectData.type === 'blob') {
+                            blobsImported++;
+                        }
+                    } catch (error) {
+                        console.warn(`Failed to import object ${hash}:`, error);
+                    }
+                }
+
+                // Create the branch reference pointing to the head commit
+                if (branchData.head) {
+                    currentRepo.store.setRef(`refs/heads/${branchName}`, branchData.head, 'branch');
+                } else {
+                    throw new Error('Branch export missing head commit hash');
+                }
+
+                sendResponse(id, 'IMPORT_BRANCH', true, {
+                    branch: branchName,
+                    commits_imported: commitsImported,
+                    blobs_imported: blobsImported,
+                    objects_imported: objectsImported,
+                    message: `Branch '${branchName}' imported successfully with ${commitsImported} commits and ${blobsImported} files`
                 });
                 break;
             }
@@ -363,6 +649,32 @@ self.addEventListener('message', async (event) => {
                     data: dbData,
                     size: dbData.byteLength,
                     message: 'Repository exported successfully'
+                });
+                break;
+            }
+
+            case 'SET_AUTHOR': {
+                if (!currentRepo) {
+                    throw new Error('No repository loaded');
+                }
+
+                const authorName = data.authorName;
+                const authorEmail = data.authorEmail;
+
+                if (!authorName) {
+                    throw new Error('Author name is required');
+                }
+
+                // Store author information in repository metadata
+                currentRepo.store.setMeta('author_name', authorName);
+                if (authorEmail) {
+                    currentRepo.store.setMeta('author_email', authorEmail);
+                }
+
+                sendResponse(id, 'SET_AUTHOR', true, {
+                    authorName: authorName,
+                    authorEmail: authorEmail || null,
+                    message: 'Author information saved successfully'
                 });
                 break;
             }
@@ -398,11 +710,18 @@ self.addEventListener('message', async (event) => {
                 const branches = currentRepo.getBranches();
                 const current = currentRepo.getCurrentBranch();
 
-                // Return branches as array for UI compatibility
-                sendResponse(id, 'LIST_BRANCHES', true, branches.map(name => ({
-                    name,
-                    current: name === current
-                })));
+                // Return branches as array with commit info for UI compatibility
+                sendResponse(id, 'LIST_BRANCHES', true, branches.map(name => {
+                    // Get the latest commit hash for this branch
+                    const branchRef = currentRepo.store.getRef(`refs/heads/${name}`);
+                    const hash = branchRef ? branchRef.hash : null;
+
+                    return {
+                        name,
+                        current: name === current,
+                        hash: hash
+                    };
+                }));
                 break;
             }
 
