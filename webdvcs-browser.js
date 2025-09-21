@@ -230,6 +230,20 @@
         // Global state (using WorkerWrapper instead of direct repo)
         let currentRepo = null;
 
+        // Utility function to normalize merge result structure from worker responses
+        function normalizeMergeResult(workerResponse) {
+            // Worker returns: { result: {...}, message: "..." }
+            // We need: { success, type, commitHash, conflicts, message }
+            const result = (workerResponse && workerResponse.result) || workerResponse || {};
+
+            return {
+                success: result.success !== undefined ? result.success : (result.type !== 'conflict'),
+                type: result.type || 'unknown',
+                commitHash: result.commitHash || null,
+                conflicts: result.conflicts || [],
+                message: (workerResponse && workerResponse.message) || result.message || 'No details available'
+            };
+        }
 
         // DOM elements
         const elements = {
@@ -2383,17 +2397,8 @@
                 // Perform merge preview using repository merge functionality
                 const mergeResult = await currentRepo.merge(sourceBranch, { preview: true });
 
-                // Extract the actual merge result from worker response structure
-                const actualResult = (mergeResult && mergeResult.result) || mergeResult;
-
-                // Ensure mergeResult has expected structure with safe defaults
-                const safeResult = {
-                    success: actualResult && actualResult.success !== undefined ? actualResult.success : (actualResult && actualResult.type !== 'conflict'),
-                    type: actualResult && actualResult.type !== undefined ? actualResult.type : 'unknown',
-                    commitHash: actualResult && actualResult.commitHash !== undefined ? actualResult.commitHash : null,
-                    conflicts: actualResult && actualResult.conflicts !== undefined ? actualResult.conflicts : [],
-                    message: (mergeResult && mergeResult.message) || (actualResult && actualResult.message) || 'No details available'
-                };
+                // Normalize merge result structure from worker response
+                const safeResult = normalizeMergeResult(mergeResult);
 
                 // Store preview data
                 mergeState.previewData = safeResult;

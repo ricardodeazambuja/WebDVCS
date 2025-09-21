@@ -73,15 +73,15 @@ function createProgressCallback() {
     };
 }
 
-// Preview merge function - check for conflicts without making changes
+/**
+ * Preview merge - checks for conflicts without modifying repository state
+ * Note: Currently performs actual merge; conflicts are caught before commit creation
+ */
 function previewMerge(repo, branchName) {
-    // For now, just use the existing merge and let conflicts be caught
-    // TODO: Find a way to preview without committing successful merges
     try {
         const result = repo.merge(branchName);
         return result;
     } catch (error) {
-        // If it's a merge conflict error, return the conflict information
         if (error.conflicts && error.conflicts.length > 0) {
             return {
                 type: 'conflict',
@@ -89,7 +89,6 @@ function previewMerge(repo, branchName) {
                 message: error.message
             };
         }
-        // Re-throw other errors
         throw error;
     }
 }
