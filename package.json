@@ -43,7 +43,7 @@
     "scripts": ["lib/**/*.js"]
   },
   "dependencies": {
-    "better-sqlite3": "^12.2.0",
+    "better-sqlite3": "^12.3.0",
     "sql.js": "^1.13.0"
   },
   "devDependencies": {
