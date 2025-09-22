@@ -383,6 +383,29 @@ self.addEventListener('message', async (event) => {
                 break;
             }
 
+            case 'FORCE_MERGE': {
+                if (!currentRepo) {
+                    throw new Error('No repository loaded');
+                }
+
+                const { branchName, options = {} } = data;
+                const strategy = options.strategy || 'accept_all_target';
+
+                try {
+                    const result = currentRepo.forceMerge(branchName, strategy);
+                    const stats = await currentRepo.getStats();
+
+                    sendResponse(id, 'FORCE_MERGE', true, {
+                        result,
+                        stats,
+                        message: result.message || `Force merge completed: ${branchName} merged using ${strategy} strategy`
+                    });
+                } catch (error) {
+                    throw new Error(`Force merge failed: ${error.message}`);
+                }
+                break;
+            }
+
             case 'DIFF': {
                 if (!currentRepo) {
                     throw new Error('No repository loaded');
@@ -665,9 +688,9 @@ self.addEventListener('message', async (event) => {
                 }
 
                 // Store author information in repository metadata
-                currentRepo.store.setMeta('author_name', authorName);
+                currentRepo.store.setMeta('author.name', authorName);
                 if (authorEmail) {
-                    currentRepo.store.setMeta('author_email', authorEmail);
+                    currentRepo.store.setMeta('author.email', authorEmail);
                 }
 
                 sendResponse(id, 'SET_AUTHOR', true, {

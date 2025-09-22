@@ -139,6 +139,10 @@
                 return this.sendMessage('MERGE', { branchName, options });
             }
 
+            async forceMerge(branchName, options = {}) {
+                return this.sendMessage('FORCE_MERGE', { branchName, options });
+            }
+
             async listBranches() {
                 return this.sendMessage('LIST_BRANCHES');
             }
@@ -213,14 +217,14 @@
             get storage() {
                 return {
                     getMeta: (key) => {
-                        if (key === 'author_name') return this.authorName;
-                        if (key === 'author_email') return this.authorEmail;
+                        if (key === 'author.name') return this.authorName;
+                        if (key === 'author.email') return this.authorEmail;
                         if (key === 'repository_name') return this.repoName;
                         return null;
                     },
                     setMeta: (key, value) => {
-                        if (key === 'author_name') this.authorName = value;
-                        if (key === 'author_email') this.authorEmail = value;
+                        if (key === 'author.name') this.authorName = value;
+                        if (key === 'author.email') this.authorEmail = value;
                         if (key === 'repository_name') this.repoName = value;
                     }
                 };
@@ -445,8 +449,8 @@
                 await currentRepo.createRepository(repoName);
 
                 // Load saved author info if exists
-                const savedAuthor = currentRepo.storage.getMeta('author_name');
-                const savedEmail = currentRepo.storage.getMeta('author_email');
+                const savedAuthor = currentRepo.storage.getMeta('author.name');
+                const savedEmail = currentRepo.storage.getMeta('author.email');
                 if (savedAuthor) elements.authorName.value = savedAuthor;
                 if (savedEmail) elements.authorEmail.value = savedEmail;
 
@@ -487,8 +491,8 @@
                     elements.repoName.value = repoName;
                 }
 
-                const savedAuthor = currentRepo.storage.getMeta('author_name');
-                const savedEmail = currentRepo.storage.getMeta('author_email');
+                const savedAuthor = currentRepo.storage.getMeta('author.name');
+                const savedEmail = currentRepo.storage.getMeta('author.email');
                 if (savedAuthor) elements.authorName.value = savedAuthor;
                 if (savedEmail) elements.authorEmail.value = savedEmail;
 
@@ -2603,9 +2607,60 @@
             updateStatus('⚠️ Merge abort not implemented yet.', 'warning');
         }
 
-        function resolveConflicts() {
-            // For now, show a message about manual conflict resolution
-            updateStatus('🛠️ Conflict resolution interface coming soon. Please resolve conflicts manually.', 'info');
+        async function acceptAllTarget() {
+            if (!mergeState.sourceBranch || !mergeState.targetBranch) {
+                updateStatus('❌ No active merge to resolve.', 'error');
+                return;
+            }
+
+            try {
+                showProgress('Accepting all changes from target branch...');
+                const workerResponse = await currentRepo.forceMerge(mergeState.sourceBranch, { strategy: 'accept_all_target' });
+                const result = normalizeMergeResult(workerResponse);
+
+                if (result.success) {
+                    updateStatus(`✅ Force merge completed: All conflicts resolved using ${mergeState.sourceBranch} branch changes.`, 'success');
+                    // Reset merge state
+                    mergeState = { sourceBranch: null, targetBranch: null, conflictsDetected: false, previewData: null };
+                    document.getElementById('mergeStatus').style.display = 'none';
+                    await refreshAll();
+                } else {
+                    updateStatus(`❌ Force merge failed: ${result.message}`, 'error');
+                }
+                hideProgress();
+            } catch (error) {
+                console.error('Failed to accept all target:', error);
+                updateStatus(`❌ Force merge failed: ${error.message}`, 'error');
+                hideProgress();
+            }
+        }
+
+        async function keepAllCurrent() {
+            if (!mergeState.sourceBranch || !mergeState.targetBranch) {
+                updateStatus('❌ No active merge to resolve.', 'error');
+                return;
+            }
+
+            try {
+                showProgress('Keeping all changes from current branch...');
+                const workerResponse = await currentRepo.forceMerge(mergeState.sourceBranch, { strategy: 'keep_all_current' });
+                const result = normalizeMergeResult(workerResponse);
+
+                if (result.success) {
+                    updateStatus(`✅ Force merge completed: All conflicts resolved using ${mergeState.targetBranch} branch changes.`, 'success');
+                    // Reset merge state
+                    mergeState = { sourceBranch: null, targetBranch: null, conflictsDetected: false, previewData: null };
+                    document.getElementById('mergeStatus').style.display = 'none';
+                    await refreshAll();
+                } else {
+                    updateStatus(`❌ Force merge failed: ${result.message}`, 'error');
+                }
+                hideProgress();
+            } catch (error) {
+                console.error('Failed to keep all current:', error);
+                updateStatus(`❌ Force merge failed: ${error.message}`, 'error');
+                hideProgress();
+            }
         }
 
         // === Repository Analytics Functions ===
@@ -3110,6 +3165,17 @@
         document.addEventListener('DOMContentLoaded', () => {
             initApp();
             setupFileSearch();
+
+            // Setup conflict resolution button event listeners
+            const acceptAllTargetButton = document.getElementById('acceptAllTargetButton');
+            const keepAllCurrentButton = document.getElementById('keepAllCurrentButton');
+
+            if (acceptAllTargetButton) {
+                acceptAllTargetButton.addEventListener('click', acceptAllTarget);
+            }
+            if (keepAllCurrentButton) {
+                keepAllCurrentButton.addEventListener('click', keepAllCurrent);
+            }
 
             // Setup modal event listeners
             const fileViewerModal = document.getElementById('fileViewerModal');

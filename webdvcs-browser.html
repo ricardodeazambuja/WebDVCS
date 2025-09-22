@@ -414,8 +414,14 @@
                                     <h4>⚠️ Merge Conflicts Detected</h4>
                                     <div class="conflict-list" id="conflictList"></div>
                                     <div class="conflict-actions">
-                                        <button id="resolveConflictsButton" class="btn btn-warning">🛠️ Resolve Conflicts</button>
-                                        <button id="abortMergeButton" class="btn btn-outline">❌ Abort Merge</button>
+                                        <h5>📋 Quick Resolution:</h5>
+                                        <div class="bulk-actions">
+                                            <button id="acceptAllTargetButton" class="btn btn-success">✅ Accept All from Target Branch</button>
+                                            <button id="keepAllCurrentButton" class="btn btn-primary">⬅️ Keep All from Current Branch</button>
+                                        </div>
+                                        <div class="action-separator">
+                                            <button id="abortMergeButton" class="btn btn-outline">❌ Abort Merge</button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
