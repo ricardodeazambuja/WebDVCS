@@ -85,7 +85,7 @@ jobs:
         tar -czf webdvcs-complete-${VERSION}.tar.gz dist/
       
     - name: 📤 Upload Release Assets
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: release-builds
         path: |
