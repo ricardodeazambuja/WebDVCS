@@ -55,7 +55,7 @@ jobs:
         retention-days: 7
         
     - name: 💬 Comment Test Results
-      uses: actions/github-script@v8
+      uses: actions/github-script@v9
       if: always()
       with:
         script: |
